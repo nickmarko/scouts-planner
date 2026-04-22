@@ -38,18 +38,34 @@ function lastActualIdx(actuals) {
   return last;
 }
 
-// Project from startIdx to 11, starting at startVal, targeting goalVal, following indices shape
+// Project from startIdx to 11, starting at startVal, targeting goalVal, following indices shape.
+// Strategy: compute a linear baseline from startVal to goalVal, then modulate each month's
+// value by its seasonal index relative to the mean index — this produces a curve that
+// both hits the goal at month 11 AND reflects the seasonal peaks and valleys.
 function projectSegment(startVal, goalVal, indices, startIdx) {
   if (startIdx > 11) return Array(12).fill(null);
-  const slice = indices.slice(startIdx);
-  const sliceSum = slice.reduce((a, b) => a + b, 0);
-  const norm = slice.map(v => sliceSum !== 0 ? (v * slice.length) / sliceSum : 1);
-  const totalChange = goalVal - startVal;
   const result = Array(12).fill(null);
-  let running = startVal;
-  for (let i = 0; i < slice.length; i++) {
-    running += (totalChange / slice.length) * norm[i];
-    result[startIdx + i] = Math.round(running);
+  const totalMonths = 12 - startIdx;
+  const allMean = indices.reduce((a, b) => a + b, 0) / 12;
+
+  // Build raw seasonal curve: linear trend * seasonal ratio at each month
+  const raw = [];
+  for (let i = 0; i < totalMonths; i++) {
+    const mi = startIdx + i;
+    // Linear interpolation position (0 at start, 1 at end)
+    const t = totalMonths === 1 ? 1 : i / (totalMonths - 1);
+    const linearVal = startVal + (goalVal - startVal) * t;
+    // Seasonal ratio: how much this month deviates from the mean
+    const seasonalRatio = allMean !== 0 ? indices[mi] / allMean : 1;
+    raw.push(linearVal * seasonalRatio);
+  }
+
+  // The last raw value may not equal goalVal exactly due to seasonal scaling.
+  // Scale all raw values so the endpoint lands exactly on goalVal.
+  const rawEnd = raw[raw.length - 1];
+  const scale = rawEnd !== 0 ? goalVal / rawEnd : 1;
+  for (let i = 0; i < totalMonths; i++) {
+    result[startIdx + i] = Math.round(raw[i] * scale);
   }
   return result;
 }
