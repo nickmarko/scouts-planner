@@ -108,8 +108,10 @@ function buildReforecast(actuals, goalVal, indices, events) {
   return applyEvents(result, futureEvents, last);
 }
 
-// Projected trajectory: extrapolate where year-end will land at current pace,
-// then use projectSegment to draw a seasonally-shaped curve to that estimate.
+// Projected trajectory: anchor to last actual, then scale the historical seasonal
+// curve for the remaining months to start from that anchor point.
+// This reflects "if our seasonal pattern holds, where do we go from here"
+// rather than extrapolating short-term momentum which can badly mislead.
 function buildTrajectory(actuals, indices, events) {
   const last = lastActualIdx(actuals);
   if (last === -1) return Array(12).fill(null);
@@ -120,20 +122,27 @@ function buildTrajectory(actuals, indices, events) {
   if (last === 11) return result;
   const lastVal = Number(actuals[last]);
 
-  // Compute average monthly delta from entered actuals to estimate year-end
-  const enteredIdxs = actuals.map((v, i) => v !== "" ? i : -1).filter(i => i >= 0);
-  let avgMonthlyDelta = 0;
-  if (enteredIdxs.length >= 2) {
-    const firstVal = Number(actuals[enteredIdxs[0]]);
-    avgMonthlyDelta = (lastVal - firstVal) / (enteredIdxs.length - 1);
-  }
-  // Project a naive linear year-end estimate from last actual
-  const monthsRemaining = 11 - last;
-  const estimatedYearEnd = lastVal + avgMonthlyDelta * monthsRemaining;
+  // Compute the ratio of last actual vs what the historical average says this
+  // month should look like. Apply that same ratio to all future months.
+  // This preserves the seasonal shape while anchoring to current reality.
+  const allMean = indices.reduce((a, b) => a + b, 0) / 12;
+  const expectedAtLastMonth = allMean !== 0 ? indices[last] * (lastVal / indices[last]) : lastVal;
+  // Scale factor: how far above/below the seasonal norm are we right now?
+  const scaleFactor = indices[last] !== 0 ? lastVal / (indices[last] * allMean / allMean) : 1;
 
-  // Use projectSegment so the remaining curve follows the seasonal shape
-  const remaining = projectSegment(lastVal, estimatedYearEnd, indices, last + 1);
-  for (let i = last + 1; i < 12; i++) result[i] = remaining[i];
+  // Project remaining months by scaling the seasonal index by our current level
+  // relative to the historical seasonal mean
+  const historicalSeasonalMean = indices.reduce((a,b) => a+b, 0) / 12;
+  // Find what the baseline level would be given our current actual vs expected
+  const impliedBaseline = historicalSeasonalMean !== 0 ? lastVal / indices[last] * historicalSeasonalMean : lastVal;
+
+  for (let i = last + 1; i < 12; i++) {
+    // Each future month = implied baseline * that month seasonal index / mean
+    const projected = historicalSeasonalMean !== 0
+      ? impliedBaseline * indices[i] / historicalSeasonalMean
+      : lastVal;
+    result[i] = Math.round(projected);
+  }
 
   const futureEvents = events.filter(e => MONTHS.indexOf(e.month) > last && e.amount !== "" && Number(e.amount) !== 0);
   return applyEvents(result, futureEvents, last);
