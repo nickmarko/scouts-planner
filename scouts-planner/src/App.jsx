@@ -210,8 +210,7 @@ export default function App() {
         rows.push([yi+1, historicalData[yr].label, m, historicalData[yr].membership[mi], historicalData[yr].finance[mi]].join(","));
       });
     });
-    navigator.clipboard.writeText(rows.join("
-")).then(() => {
+    navigator.clipboard.writeText(rows.join("\n")).then(() => {
       setCsvCopied(true);
       setTimeout(() => setCsvCopied(false), 2500);
     });
