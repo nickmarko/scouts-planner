@@ -405,7 +405,7 @@ export default function App() {
                     <span style={{ fontSize:13, color:"#666", fontWeight:600 }}>Target Scout Count</span>
                     <span style={{ fontSize:32, fontWeight:800, color:"#2E7D32" }}>{memberGoalCount.toLocaleString()}</span>
                   </div>
-                  <input type="range" min={1000} max={4000} step={10} value={memberGoalCount}
+                  <input type="range" min={1000} max={4000} step={1} value={memberGoalCount}
                     onChange={e=>setMemberGoalCount(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#2E7D32" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
@@ -422,7 +422,7 @@ export default function App() {
                     <span style={{ fontSize:13, color:"#666", fontWeight:600 }}>Growth Percentage</span>
                     <span style={{ fontSize:32, fontWeight:800, color:"#1565C0" }}>{memberGoalPct>=0?"+":""}{memberGoalPct}%</span>
                   </div>
-                  <input type="range" min={-50} max={100} step={0.5} value={memberGoalPct}
+                  <input type="range" min={-50} max={100} step={0.1} value={memberGoalPct}
                     onChange={e=>setMemberGoalCount(Math.round(memberStart*(1+Number(e.target.value)/100)))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#1565C0" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
