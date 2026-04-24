@@ -108,7 +108,8 @@ function buildReforecast(actuals, goalVal, indices, events) {
   return applyEvents(result, futureEvents, last);
 }
 
-// Projected trajectory: extrapolate natural momentum from actuals, apply future events
+// Projected trajectory: extrapolate where year-end will land at current pace,
+// then use projectSegment to draw a seasonally-shaped curve to that estimate.
 function buildTrajectory(actuals, indices, events) {
   const last = lastActualIdx(actuals);
   if (last === -1) return Array(12).fill(null);
@@ -118,21 +119,22 @@ function buildTrajectory(actuals, indices, events) {
   }
   if (last === 11) return result;
   const lastVal = Number(actuals[last]);
-  // Compute average monthly delta from all entered actuals
-  const enteredIndices = actuals.map((v, i) => v !== "" ? i : -1).filter(i => i >= 0);
+
+  // Compute average monthly delta from entered actuals to estimate year-end
+  const enteredIdxs = actuals.map((v, i) => v !== "" ? i : -1).filter(i => i >= 0);
   let avgMonthlyDelta = 0;
-  if (enteredIndices.length >= 2) {
-    const first = Number(actuals[enteredIndices[0]]);
-    avgMonthlyDelta = (lastVal - first) / (enteredIndices.length - 1);
+  if (enteredIdxs.length >= 2) {
+    const firstVal = Number(actuals[enteredIdxs[0]]);
+    avgMonthlyDelta = (lastVal - firstVal) / (enteredIdxs.length - 1);
   }
-  // Project remaining months modulated by seasonal ratio vs current month
-  const allMean = indices.reduce((a, b) => a + b, 0) / 12;
-  let running = lastVal;
-  for (let i = last + 1; i < 12; i++) {
-    const seasonalRatio = allMean !== 0 ? indices[i] / allMean : 1;
-    running += avgMonthlyDelta * seasonalRatio;
-    result[i] = Math.round(running);
-  }
+  // Project a naive linear year-end estimate from last actual
+  const monthsRemaining = 11 - last;
+  const estimatedYearEnd = lastVal + avgMonthlyDelta * monthsRemaining;
+
+  // Use projectSegment so the remaining curve follows the seasonal shape
+  const remaining = projectSegment(lastVal, estimatedYearEnd, indices, last + 1);
+  for (let i = last + 1; i < 12; i++) result[i] = remaining[i];
+
   const futureEvents = events.filter(e => MONTHS.indexOf(e.month) > last && e.amount !== "" && Number(e.amount) !== 0);
   return applyEvents(result, futureEvents, last);
 }
@@ -199,6 +201,21 @@ export default function App() {
     membership: Array(12).fill(""),
     finance: Array(12).fill("")
   });
+  const [csvCopied, setCsvCopied] = useState(false);
+
+  const copyCsvToClipboard = () => {
+    const rows = ["year,label,month,membership,finance"];
+    ["year1","year2"].forEach((yr, yi) => {
+      MONTHS.forEach((m, mi) => {
+        rows.push([yi+1, historicalData[yr].label, m, historicalData[yr].membership[mi], historicalData[yr].finance[mi]].join(","));
+      });
+    });
+    navigator.clipboard.writeText(rows.join("
+")).then(() => {
+      setCsvCopied(true);
+      setTimeout(() => setCsvCopied(false), 2500);
+    });
+  };
 
   useEffect(() => {
     fetch("/data.csv")
@@ -329,6 +346,11 @@ export default function App() {
             <div style={{ background:"#E8F5E9", borderRadius:8, padding:"12px 16px", fontSize:13, color:"#2E7D32", border:"1px solid #C8E6C9", marginBottom:20 }}>
               <b>Permanent updates:</b> edit <code>public/data.csv</code> in GitHub → Vercel redeploys in ~30s.
               Membership = headcount at month end. Finance = net monthly cash flow.
+            </div>
+            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:16 }}>
+              <button onClick={copyCsvToClipboard} style={{ padding:"8px 18px", background: csvCopied ? "#2E7D32" : "#fff", color: csvCopied ? "#fff" : "#2E7D32", border:"2px solid #2E7D32", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s", display:"flex", alignItems:"center", gap:8 }}>
+                {csvCopied ? "✓ Copied to clipboard!" : "📋 Copy as CSV"}
+              </button>
             </div>
             {["membership","finance"].map(field => (
               <div key={field} style={card}>
