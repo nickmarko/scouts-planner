@@ -89,7 +89,10 @@ function buildOriginalTargets(startVal, goalVal, indices, events) {
   return applyEvents(projectSegment(startVal, goalVal, indices, 0), events);
 }
 
-// Reforecast: lock actuals, reproject remaining months to hit goal, apply future events
+// Reforecast: lock actuals, reproject remaining months to hit goal following seasonal shape.
+// The seasonal shape is applied as a RELATIVE adjustment on top of a linear ramp from
+// lastVal to goalVal — so the line never dips below the linear path, it only adds
+// seasonal peaks above it. This correctly shows "what you need to do to get back on track."
 function buildReforecast(actuals, goalVal, indices, events) {
   const last = lastActualIdx(actuals);
   if (last === -1) return Array(12).fill(null);
@@ -99,12 +102,28 @@ function buildReforecast(actuals, goalVal, indices, events) {
     if (actuals[i] !== "") result[i] = Number(actuals[i]);
   }
   if (last === 11) return result;
-  // Adjust goal: subtract lump sums already captured in actuals, keep future ones
+
   const futureEvents = events.filter(e => MONTHS.indexOf(e.month) > last && e.amount !== "" && Number(e.amount) !== 0);
   const futureEventTotal = futureEvents.reduce((s, e) => s + Number(e.amount), 0);
-  const adjustedGoal = goalVal - futureEventTotal; // will be re-added by applyEvents below
-  const remaining = projectSegment(lastVal, adjustedGoal, indices, last + 1);
-  for (let i = last + 1; i < 12; i++) result[i] = remaining[i];
+  const adjustedGoal = goalVal - futureEventTotal;
+
+  const remaining = 11 - last;
+  // Build a linear ramp from lastVal to adjustedGoal
+  // Then add seasonal deviation on top (only peaks, not valleys below linear)
+  const allMean = indices.reduce((a,b) => a+b, 0) / 12;
+  for (let i = 0; i < remaining; i++) {
+    const mi = last + 1 + i;
+    const t = remaining === 1 ? 1 : i / (remaining - 1);
+    const linear = lastVal + (adjustedGoal - lastVal) * t;
+    // Seasonal ratio relative to mean — only apply upward deviation
+    const seasonalRatio = allMean !== 0 ? indices[mi] / allMean : 1;
+    // Blend: use seasonal shape but floor at the linear ramp value
+    const seasonal = linear * seasonalRatio;
+    result[mi] = Math.round(Math.max(linear, seasonal));
+  }
+  // Force last month to exactly hit the goal
+  result[11] = Math.round(adjustedGoal);
+
   return applyEvents(result, futureEvents, last);
 }
 
