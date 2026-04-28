@@ -221,7 +221,7 @@ export default function App() {
   const [loadError, setLoadError] = useState(false);
   const [memberGoalCount, setMemberGoalCount] = useState(2200);
   const [financeNetGoal, setFinanceNetGoal] = useState(0); // target net position at year end
-  const [financeStartBalance, setFinanceStartBalance] = useState(486000);
+  const [financeStartBalance, setFinanceStartBalance] = useState(9197);
   const [financeEvents, setFinanceEvents] = useState([
     { id: 1, month: "Sep", amount: "", label: "Asset Sale" }
   ]);
@@ -782,10 +782,7 @@ export default function App() {
                 { color:"#66bb6a", label:historicalData.year2.label },
                 { color:"#1B5E20", label:"Original Target", dash:"6 3" },
                 { color:"#F57F17", label:"Actual" },
-                ...(hasF?[
-                  { color:"#1565C0", label:"Reforecast to Goal", dash:"4 2" },
-                  { color:"#E65100", label:"Projected Trajectory", dash:"2 2" },
-                ]:[]),
+                ...(hasF?[{ color:"#1565C0", label:"Reforecast to Goal", dash:"4 2" }]:[]),
                 ...(activeEvents.length>0?[{ color:"#9C27B0", label:"One-time Event ★" }]:[])
               ]} />
             </div>
@@ -808,10 +805,9 @@ export default function App() {
                   ))}
                   <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                   <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
+                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
                   {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
-                  {hasF&&<Line type="monotone" dataKey="Projected Trajectory" stroke="#E65100" strokeWidth={2} dot={false} strokeDasharray="2 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -833,10 +829,9 @@ export default function App() {
                   ))}
                   <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                   <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
+                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
                   {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
-                  {hasF&&<Line type="monotone" dataKey="Projected Trajectory" stroke="#E65100" strokeWidth={2} dot={false} strokeDasharray="2 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -855,18 +850,23 @@ export default function App() {
                   </tr></thead>
                   <tbody>
                     {MONTHS.map((m,i)=>{
-                      const orig=origFinance[i], refc=rfFinance[i];
+                      const orig=origFinance[i];
+                      const refc=rfFinance[i];
                       const actual=actuals.finance[i]!==""?Number(actuals.finance[i]):null;
-                      const variance=actual!==null?actual-orig:null;
+                      // Compare actual vs original target; use reforecast as forward guide
+                      const variance=actual!==null && orig!=null ? actual-orig : null;
                       const hasEvt=activeEvents.some(e=>e.month===m);
+                      const isPast=actual!==null;
                       return(
-                        <tr key={m} style={{ borderBottom:"1px solid #f0f0f0", background:hasEvt?"#fdf8ff":"#fff" }}>
+                        <tr key={m} style={{ borderBottom:"1px solid #f0f0f0", background:hasEvt?"#fdf8ff":isPast?"#fafafa":"#fff" }}>
                           <td style={{ padding:"7px 12px", fontWeight:600 }}>
                             {m}{hasEvt&&<span style={{ marginLeft:6, fontSize:11, color:"#9C27B0", fontWeight:700 }}>★</span>}
                           </td>
-                          <td style={{ padding:"7px 12px", textAlign:"center", color:"#1B5E20", fontWeight:600 }}>${orig?.toLocaleString()}</td>
-                          <td style={{ padding:"7px 12px", textAlign:"center", color:refc!==null?"#1565C0":"#ccc", fontWeight:refc!==null?700:400 }}>
-                            {refc!==null?`$${refc.toLocaleString()}`:"—"}
+                          <td style={{ padding:"7px 12px", textAlign:"center", color:"#1B5E20", fontWeight:600 }}>
+                            {orig!=null?`$${Math.round(orig).toLocaleString()}`:"—"}
+                          </td>
+                          <td style={{ padding:"7px 12px", textAlign:"center", color:refc!==null?"#1565C0":"#aaa", fontWeight:refc!==null?700:400 }}>
+                            {refc!==null?`$${Math.round(refc).toLocaleString()}`:"—"}
                           </td>
                           <td style={{ padding:"4px 8px", textAlign:"center" }}>
                             <input type="number" placeholder="—" value={actuals.finance[i]}
@@ -874,9 +874,14 @@ export default function App() {
                               style={{ width:100, padding:"4px 6px", border:"1px solid #ddd", borderRadius:4, fontSize:13, textAlign:"center", fontFamily:"inherit" }} />
                           </td>
                           <td style={{ padding:"7px 12px", textAlign:"center", fontWeight:variance!==null?700:400, color:variance===null?"#ccc":variance>=0?"#2E7D32":"#c62828" }}>
-                            {variance!==null?(variance>=0?`+$${variance.toLocaleString()}`:`-$${Math.abs(variance).toLocaleString()}`):"—"}
+                            {variance!==null?(variance>=0?`+$${Math.round(variance).toLocaleString()}`:`-$${Math.round(Math.abs(variance)).toLocaleString()}`):"—"}
                           </td>
-                          <td style={{ padding:"7px 12px", textAlign:"center" }}><StatusBadge onTrack={actual!==null?actual>=orig:null}/></td>
+                          <td style={{ padding:"7px 12px", textAlign:"center" }}>
+                            {actual===null?<span style={{color:"#ccc"}}>—</span>
+                              :actual>=orig
+                                ?<span style={{background:"#E8F5E9",color:"#2E7D32",padding:"2px 10px",borderRadius:20,fontWeight:700,fontSize:12}}>✓ On Track</span>
+                                :<span style={{background:"#FFEBEE",color:"#c62828",padding:"2px 10px",borderRadius:20,fontWeight:700,fontSize:12}}>⚠ Behind</span>}
+                          </td>
                         </tr>
                       );
                     })}
