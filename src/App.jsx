@@ -220,7 +220,7 @@ export default function App() {
   const [csvLoaded, setCsvLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [memberGoalCount, setMemberGoalCount] = useState(2200);
-  const [financeGoal, setFinanceGoal] = useState(500000);
+  const [financeNetGoal, setFinanceNetGoal] = useState(0); // target net position at year end
   const [financeStartBalance, setFinanceStartBalance] = useState(486000);
   const [financeEvents, setFinanceEvents] = useState([
     { id: 1, month: "Sep", amount: "", label: "Asset Sale" }
@@ -259,7 +259,8 @@ export default function App() {
 
   const memberStart = historicalData.year2.membership[11];
   const memberGoalPct = Math.round(((memberGoalCount - memberStart) / memberStart) * 1000) / 10;
-  const financeGoalBalance = financeStartBalance + financeGoal;
+  // Required cash at year end = pay off debt + desired net cushion
+  const financeGoalBalance = outstandingDebt + financeNetGoal;
   const activeEvents = financeEvents.filter(e => e.amount !== "" && Number(e.amount) !== 0);
 
   // ── Projections ──
@@ -683,21 +684,21 @@ export default function App() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Year-End Cash Goal</div>
-                  <div style={{ fontSize:28, fontWeight:800, color:financeGoal>=0?"#2E7D32":"#c62828", marginBottom:8 }}>
-                    {financeGoal>=0?"+$":"-$"}{Math.abs(financeGoal).toLocaleString()}
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Target Year-End Net Position</div>
+                  <div style={{ fontSize:28, fontWeight:800, color:financeNetGoal>=0?"#2E7D32":"#c62828", marginBottom:8 }}>
+                    {financeNetGoal>=0?"$":"-$"}{Math.abs(financeNetGoal).toLocaleString()}
                   </div>
-                  <input type="range" min={0} max={2000000} step={5000} value={financeGoal}
-                    onChange={e=>setFinanceGoal(Number(e.target.value))}
+                  <input type="range" min={-200000} max={500000} step={5000} value={financeNetGoal}
+                    onChange={e=>setFinanceNetGoal(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#2E7D32" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
-                    <span>$0</span><span>$500k</span><span>$1M</span><span>$1.5M</span><span>$2M</span>
+                    <span>-$200k</span><span>$0</span><span>+$250k</span><span>+$500k</span>
                   </div>
                   <div style={{ marginTop:8, fontSize:12, color:"#888" }}>
-                    Target year-end cash: <b style={{ color:"#2E7D32" }}>${financeGoalBalance.toLocaleString()}</b>
+                    Required year-end cash: <b style={{ color:"#2E7D32" }}>${financeGoalBalance.toLocaleString()}</b>
                   </div>
                   <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>
-                    Set to $500k+ to cover loan payoff and break even
+                    Cash needed = loan payoff (${outstandingDebt.toLocaleString()}) + net cushion
                   </div>
                 </div>
               </div>
