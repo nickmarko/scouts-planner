@@ -220,8 +220,8 @@ export default function App() {
   const [csvLoaded, setCsvLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [memberGoalCount, setMemberGoalCount] = useState(2200);
-  const [financeGoal, setFinanceGoal] = useState(5000);
-  const [financeStartBalance, setFinanceStartBalance] = useState(-16000);
+  const [financeGoal, setFinanceGoal] = useState(500000);
+  const [financeStartBalance, setFinanceStartBalance] = useState(486000);
   const [financeEvents, setFinanceEvents] = useState([
     { id: 1, month: "Sep", amount: "", label: "Asset Sale" }
   ]);
@@ -267,94 +267,21 @@ export default function App() {
   const rfMember     = useMemo(() => buildReforecast(actuals.membership, memberGoalCount, memberIndices, []), [actuals.membership, memberGoalCount, memberIndices]);
   const trajMember   = useMemo(() => buildTrajectory(actuals.membership, memberIndices, []), [actuals.membership, memberIndices]);
 
-  // ── Finance: flow-based projection ──
-  // The seasonal indices represent monthly NET FLOW patterns (not levels).
-  // We simulate running balance by adding each month's projected flow to the prior balance.
-  // This is fundamentally different from membership (a level metric).
+  // ── Finance: level-based projection (same math as membership) ──
+  // Cash balance is a level metric. Historical cash balances show the seasonal shape.
+  // We use the same projectSegment / buildReforecast / buildTrajectory functions.
+  // financeGoalBalance = the cash balance we want at year end (e.g. $500k to pay off debt).
+  const origFinance = useMemo(() =>
+    buildOriginalTargets(financeStartBalance, financeGoalBalance, financeIndices, activeEvents),
+    [financeStartBalance, financeGoalBalance, financeIndices, activeEvents]);
 
-  // Compute average monthly flow from historical data
-  const avgMonthlyFlows = useMemo(() => {
-    return MONTHS.map((_, i) => (historicalData.year1.finance[i] + historicalData.year2.finance[i]) / 2);
-  }, [historicalData]);
+  const rfFinance = useMemo(() =>
+    buildReforecast(actuals.finance, financeGoalBalance, financeIndices, activeEvents),
+    [actuals.finance, financeGoalBalance, financeIndices, activeEvents]);
 
-  // Total historical average annual flow
-  const avgAnnualFlow = useMemo(() => avgMonthlyFlows.reduce((a,b) => a+b, 0), [avgMonthlyFlows]);
-
-  // Scale monthly flows so they sum to the desired year-end change (financeGoal),
-  // preserving the seasonal shape. Then simulate running balance from startBalance.
-  const origFinance = useMemo(() => {
-    const scale = avgAnnualFlow !== 0 ? financeGoal / avgAnnualFlow : 1;
-    const result = [];
-    let bal = financeStartBalance;
-    for (let i = 0; i < 12; i++) {
-      bal += avgMonthlyFlows[i] * scale;
-      result.push(Math.round(bal));
-    }
-    // Apply one-time events
-    activeEvents.forEach(evt => {
-      const mi = MONTHS.indexOf(evt.month);
-      for (let i = mi; i < 12; i++) result[i] = Math.round(result[i] + Number(evt.amount));
-    });
-    return result;
-  }, [financeStartBalance, financeGoal, avgMonthlyFlows, avgAnnualFlow, activeEvents]);
-
-  // Reforecast: lock actuals, then project remaining months using scaled seasonal flows
-  // to still hit financeGoalBalance by December.
-  const rfFinance = useMemo(() => {
-    const last = lastActualIdx(actuals.finance);
-    if (last === -1) return Array(12).fill(null);
-    const result = Array(12).fill(null);
-    for (let i = 0; i <= last; i++) {
-      if (actuals.finance[i] !== "") result[i] = Number(actuals.finance[i]);
-    }
-    if (last === 11) return result;
-    const lastVal = Number(actuals.finance[last]);
-    const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
-    const futureEventTotal = futureEvents.reduce((s,e) => s + Number(e.amount), 0);
-    const targetWithoutEvents = financeGoalBalance - futureEventTotal;
-    // Sum of remaining average flows
-    const remainingFlows = avgMonthlyFlows.slice(last + 1);
-    const remainingFlowSum = remainingFlows.reduce((a,b) => a+b, 0);
-    const neededChange = targetWithoutEvents - lastVal;
-    const scale = remainingFlowSum !== 0 ? neededChange / remainingFlowSum : 0;
-    let bal = lastVal;
-    for (let i = last + 1; i < 12; i++) {
-      bal += avgMonthlyFlows[i] * scale;
-      result[i] = Math.round(bal);
-    }
-    futureEvents.forEach(evt => {
-      const mi = MONTHS.indexOf(evt.month);
-      for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount));
-    });
-    return result;
-  }, [actuals.finance, financeGoalBalance, avgMonthlyFlows, activeEvents]);
-
-  // Trajectory: from last actual, apply historical seasonal flow pattern as-is
-  const trajFinance = useMemo(() => {
-    const last = lastActualIdx(actuals.finance);
-    if (last === -1) return Array(12).fill(null);
-    const result = Array(12).fill(null);
-    for (let i = 0; i <= last; i++) {
-      if (actuals.finance[i] !== "") result[i] = Number(actuals.finance[i]);
-    }
-    if (last === 11) return result;
-    const lastVal = Number(actuals.finance[last]);
-    // Scale: ratio of actual vs what historical average says this month should be
-    const historicalAtLast = avgMonthlyFlows.slice(0, last+1).reduce((a,b) => a+b, 0);
-    const actualAtLast = lastVal - financeStartBalance;
-    const scaleRatio = historicalAtLast !== 0 ? actualAtLast / historicalAtLast : 1;
-    let bal = lastVal;
-    for (let i = last + 1; i < 12; i++) {
-      bal += avgMonthlyFlows[i] * scaleRatio;
-      result[i] = Math.round(bal);
-    }
-    const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
-    futureEvents.forEach(evt => {
-      const mi = MONTHS.indexOf(evt.month);
-      for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount));
-    });
-    return result;
-  }, [actuals.finance, financeStartBalance, avgMonthlyFlows, activeEvents]);
+  const trajFinance = useMemo(() =>
+    buildTrajectory(actuals.finance, financeIndices, activeEvents),
+    [actuals.finance, financeIndices, activeEvents]);
 
   const lastMemberIdx  = lastActualIdx(actuals.membership);
   const lastFinanceIdx = lastActualIdx(actuals.finance);
@@ -375,29 +302,23 @@ export default function App() {
     "Projected Trajectory":  trajMember[i],
   }));
 
-  // Historical running balances (cumulative from Jan)
-  const financeYear1Running = historicalData.year1.finance.reduce((acc, v, i) => {
-    acc.push((i > 0 ? acc[i-1] : 0) + v); return acc;
-  }, []);
-  const financeYear2Running = historicalData.year2.finance.reduce((acc, v, i) => {
-    acc.push((i > 0 ? acc[i-1] : 0) + v); return acc;
-  }, []);
+  // Historical cash balances — these ARE the level values (cash in bank each month)
+  const financeYear1Running = historicalData.year1.finance;
+  const financeYear2Running = historicalData.year2.finance;
 
-  // Remaining debt after any asset sale events that have passed
-  // Once an asset sale >= outstandingDebt occurs, debt drops to zero
+  // Debt remaining by month — drops to zero when asset sale covers it
   const debtByMonth = useMemo(() => {
     let remaining = outstandingDebt;
     return MONTHS.map((m, i) => {
       const evt = activeEvents.find(e => MONTHS.indexOf(e.month) === i);
       if (evt && Number(evt.amount) > 0) {
-        const payoff = Math.min(remaining, Number(evt.amount));
-        remaining = Math.max(0, remaining - payoff);
+        remaining = Math.max(0, remaining - Number(evt.amount));
       }
       return remaining;
     });
   }, [outstandingDebt, activeEvents]);
 
-  // Cash chart: raw balances as reported
+  // Cash chart: raw bank balance as CEO reports it
   const cashChart = MONTHS.map((m, i) => ({
     month: m,
     [historicalData.year1.label]: financeYear1Running[i],
@@ -408,14 +329,15 @@ export default function App() {
     "Projected Trajectory": trajFinance[i],
   }));
 
-  // Net chart: cash minus outstanding debt at each month
+  // Net chart: cash minus remaining debt at each month
+  // Before asset sale: cash - $500k. After asset sale retires debt: same as cash chart.
   const netChart = MONTHS.map((m, i) => {
     const debt = debtByMonth[i];
-    const toNet = v => v !== null && v !== undefined ? Math.round(v - debt) : null;
+    const toNet = v => (v !== null && v !== undefined) ? Math.round(v - debt) : null;
     return {
       month: m,
-      [historicalData.year1.label]: financeYear1Running[i] !== undefined ? Math.round(financeYear1Running[i] - outstandingDebt) : null,
-      [historicalData.year2.label]: financeYear2Running[i] !== undefined ? Math.round(financeYear2Running[i] - outstandingDebt) : null,
+      [historicalData.year1.label]: toNet(financeYear1Running[i]),
+      [historicalData.year2.label]: toNet(financeYear2Running[i]),
       "Original Target":      toNet(origFinance[i]),
       "Actual":               actuals.finance[i] !== "" ? toNet(Number(actuals.finance[i])) : null,
       "Reforecast to Goal":   toNet(rfFinance[i]),
@@ -665,11 +587,11 @@ export default function App() {
                 <div>
                   <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Starting Cash (CEO reports)</div>
                   <div style={{ fontSize:28, fontWeight:800, color:"#555", marginBottom:8 }}>${financeStartBalance.toLocaleString()}</div>
-                  <input type="range" min={0} max={2000000} step={1000} value={financeStartBalance}
+                  <input type="range" min={0} max={2000000} step={5000} value={financeStartBalance}
                     onChange={e=>setFinanceStartBalance(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#555" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
-                    <span>$0</span><span>$1M</span><span>$2M</span>
+                    <span>$0</span><span>$500k</span><span>$1M</span><span>$1.5M</span><span>$2M</span>
                   </div>
                 </div>
                 <div>
@@ -692,14 +614,17 @@ export default function App() {
                   <div style={{ fontSize:28, fontWeight:800, color:financeGoal>=0?"#2E7D32":"#c62828", marginBottom:8 }}>
                     {financeGoal>=0?"+$":"-$"}{Math.abs(financeGoal).toLocaleString()}
                   </div>
-                  <input type="range" min={-1000000} max={2000000} step={1000} value={financeGoal}
+                  <input type="range" min={0} max={2000000} step={5000} value={financeGoal}
                     onChange={e=>setFinanceGoal(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#2E7D32" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
-                    <span>-$1M</span><span>$0</span><span>+$1M</span><span>+$2M</span>
+                    <span>$0</span><span>$500k</span><span>$1M</span><span>$1.5M</span><span>$2M</span>
                   </div>
                   <div style={{ marginTop:8, fontSize:12, color:"#888" }}>
-                    Target cash: <b style={{ color:"#2E7D32" }}>${financeGoalBalance.toLocaleString()}</b>
+                    Target year-end cash: <b style={{ color:"#2E7D32" }}>${financeGoalBalance.toLocaleString()}</b>
+                  </div>
+                  <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>
+                    Set to $500k+ to cover loan payoff and break even
                   </div>
                 </div>
               </div>
@@ -744,9 +669,30 @@ export default function App() {
               ))}
             </div>
 
-            <SummaryBanner hasActuals={hasF} lastIdx={lastFinanceIdx}
-              rfLine={rfFinance} trajEnd={projFinanceEnd}
-              goalVal={financeGoalBalance} goalLabel="" prefix="$" />
+            {hasF && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
+                <div style={{ background:"#E3F2FD", borderRadius:10, padding:"14px 18px", border:"1px solid #BBDEFB" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#1565C0", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Reforecast to Goal</div>
+                  <div style={{ fontSize:13, color:"#333" }}>
+                    Remaining months re-projected to reach <b>${financeGoalBalance.toLocaleString()}</b> cash by Dec
+                    (net <b style={{ color:(financeGoalBalance-outstandingDebt)>=0?"#2E7D32":"#c62828" }}>
+                      {(financeGoalBalance-outstandingDebt)>=0?"$":"-$"}{Math.abs(financeGoalBalance-outstandingDebt).toLocaleString()}
+                    </b> after loan payoff).
+                  </div>
+                </div>
+                <div style={{ background: projFinanceEnd!==null && (projFinanceEnd-debtByMonth[11])>=0 ? "#E8F5E9" : "#FFF8E1", borderRadius:10, padding:"14px 18px", border:`1px solid ${projFinanceEnd!==null && (projFinanceEnd-debtByMonth[11])>=0 ? "#C8E6C9" : "#FFE082"}` }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#F57F17", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Projected Year-End</div>
+                  <div style={{ fontSize:13, color:"#555", marginBottom:4 }}>
+                    Cash: <b style={{ fontSize:20, color:"#333" }}>{projFinanceEnd!==null?`$${projFinanceEnd.toLocaleString()}`:"—"}</b>
+                  </div>
+                  <div style={{ fontSize:13, color:"#555" }}>
+                    Net (after loan): <b style={{ fontSize:18, color: projFinanceEnd!==null && (projFinanceEnd-debtByMonth[11])>=0?"#2E7D32":"#c62828" }}>
+                      {projFinanceEnd!==null?(projFinanceEnd-debtByMonth[11])>=0?`+$${(projFinanceEnd-debtByMonth[11]).toLocaleString()}`:`-$${Math.abs(projFinanceEnd-debtByMonth[11]).toLocaleString()}`:"—"}
+                    </b>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Shared legend */}
             <div style={{ ...card, paddingBottom:12 }}>
