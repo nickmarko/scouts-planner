@@ -767,16 +767,17 @@ export default function App() {
                     </b> after loan payoff).
                   </div>
                 </div>
-                <div style={{ background: projFinanceEnd!==null && (projFinanceEnd-debtByMonth[11])>=0 ? "#E8F5E9" : "#FFF8E1", borderRadius:10, padding:"14px 18px", border:`1px solid ${projFinanceEnd!==null && (projFinanceEnd-debtByMonth[11])>=0 ? "#C8E6C9" : "#FFE082"}` }}>
+                <div style={{ background: projFinanceEnd!==null && (projFinanceEnd-outstandingDebt)>=0 ? "#E8F5E9" : "#FFF8E1", borderRadius:10, padding:"14px 18px", border:`1px solid ${projFinanceEnd!==null && (projFinanceEnd-outstandingDebt)>=0 ? "#C8E6C9" : "#FFE082"}` }}>
                   <div style={{ fontSize:12, fontWeight:700, color:"#F57F17", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Projected Year-End</div>
                   <div style={{ fontSize:13, color:"#555", marginBottom:4 }}>
-                    Cash: <b style={{ fontSize:20, color:"#333" }}>{projFinanceEnd!==null?`$${projFinanceEnd.toLocaleString()}`:"—"}</b>
+                    Cash: <b style={{ fontSize:20, color:"#333" }}>{projFinanceEnd!==null?`$${Math.round(projFinanceEnd).toLocaleString()}`:"—"}</b>
                   </div>
                   <div style={{ fontSize:13, color:"#555" }}>
-                    Net (after loan): <b style={{ fontSize:18, color: projFinanceEnd!==null && (projFinanceEnd-debtByMonth[11])>=0?"#2E7D32":"#c62828" }}>
-                      {projFinanceEnd!==null?(projFinanceEnd-debtByMonth[11])>=0?`+$${(projFinanceEnd-debtByMonth[11]).toLocaleString()}`:`-$${Math.abs(projFinanceEnd-debtByMonth[11]).toLocaleString()}`:"—"}
+                    After loan payoff: <b style={{ fontSize:18, color: projFinanceEnd!==null && (projFinanceEnd-outstandingDebt)>=0?"#2E7D32":"#c62828" }}>
+                      {projFinanceEnd!==null?(projFinanceEnd-outstandingDebt)>=0?`+$${Math.round(projFinanceEnd-outstandingDebt).toLocaleString()}`:`-$${Math.round(Math.abs(projFinanceEnd-outstandingDebt)).toLocaleString()}`:"—"}
                     </b>
                   </div>
+                  <div style={{ fontSize:11, color:"#888", marginTop:4 }}>Cash minus $500k loan payoff</div>
                 </div>
               </div>
             )}
