@@ -389,10 +389,8 @@ export default function App() {
   // ── Chart data ──
   const memberChart = MONTHS.map((m, i) => ({
     month: m,
-    ...(showMemberHistory ? {
-      [historicalData.year1.label]: historicalData.year1.membership[i],
-      [historicalData.year2.label]: historicalData.year2.membership[i],
-    } : {}),
+    [historicalData.year1.label]: historicalData.year1.membership[i],
+    [historicalData.year2.label]: historicalData.year2.membership[i],
     "Original Target":       origMember[i],
     "Actual":                actuals.membership[i] !== "" ? Number(actuals.membership[i]) : null,
     "Reforecast to Goal":    rfMember[i],
@@ -418,10 +416,8 @@ export default function App() {
   // Cash chart: raw bank balance as CEO reports it
   const cashChart = MONTHS.map((m, i) => ({
     month: m,
-    ...(showFinanceHistory ? {
-      [historicalData.year1.label]: financeYear1Running[i],
-      [historicalData.year2.label]: financeYear2Running[i],
-    } : {}),
+    [historicalData.year1.label]: financeYear1Running[i],
+    [historicalData.year2.label]: financeYear2Running[i],
     "Original Target":      origFinance[i],
     "Actual":               actuals.finance[i] !== "" ? Number(actuals.finance[i]) : null,
     "Reforecast to Goal":   rfFinance[i],
@@ -435,10 +431,8 @@ export default function App() {
     const toNet = v => (v !== null && v !== undefined) ? Math.round(v - debt) : null;
     return {
       month: m,
-      ...(showFinanceHistory ? {
-        [historicalData.year1.label]: toNet(financeYear1Running[i]),
-        [historicalData.year2.label]: toNet(financeYear2Running[i]),
-      } : {}),
+      [historicalData.year1.label]: toNet(financeYear1Running[i]),
+      [historicalData.year2.label]: toNet(financeYear2Running[i]),
       "Original Target":      toNet(origFinance[i]),
       "Actual":               actuals.finance[i] !== "" ? toNet(Number(actuals.finance[i])) : null,
       "Reforecast to Goal":   toNet(rfFinance[i]),
@@ -642,14 +636,14 @@ export default function App() {
                   <XAxis dataKey="month" tick={{ fontSize:12 }} />
                   <YAxis tick={{ fontSize:12 }} tickFormatter={v=>v.toLocaleString()} domain={memberYDomain} />
                   <Tooltip content={<Tip suffix=" scouts" />} />
-                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
-                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
-                  {showMemberHistory&&<Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />}
-                  {showMemberHistory&&<Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />}
-                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
-                  <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
-                  {hasM&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
-                  {hasM&&<Line type="monotone" dataKey="Projected Trajectory" stroke="#E65100" strokeWidth={2} dot={false} strokeDasharray="2 2" />}
+                  <Line type="monotone" isAnimationActive={false} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" isAnimationActive={false} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  {showMemberHistory&&<Line type="monotone" isAnimationActive={false} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />}
+                  {showMemberHistory&&<Line type="monotone" isAnimationActive={false} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />}
+                  <Line type="monotone" isAnimationActive={false} dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
+                  <Line type="monotone" isAnimationActive={false} dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
+                  {hasM&&<Line type="monotone" isAnimationActive={false} dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
+                  {hasM&&<Line type="monotone" isAnimationActive={false} dataKey="Projected Trajectory" stroke="#E65100" strokeWidth={2} dot={false} strokeDasharray="2 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -873,11 +867,11 @@ export default function App() {
                     <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
                       label={{ value:`${evt.label} +$${Number(evt.amount).toLocaleString()}`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
                   ))}
-                  {showFinanceHistory&&<Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />}
-                  {showFinanceHistory&&<Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />}
-                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
-                  <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
-                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
+                  {showFinanceHistory&&<Line type="monotone" isAnimationActive={false} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />}
+                  {showFinanceHistory&&<Line type="monotone" isAnimationActive={false} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />}
+                  <Line type="monotone" isAnimationActive={false} dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
+                  <Line type="monotone" isAnimationActive={false} dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
+                  {hasF&&<Line type="monotone" isAnimationActive={false} dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -897,11 +891,11 @@ export default function App() {
                     <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
                       label={{ value:`${evt.label} (net +$${Math.max(0,Number(evt.amount)-outstandingDebt).toLocaleString()})`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
                   ))}
-                  {showFinanceHistory&&<Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />}
-                  {showFinanceHistory&&<Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />}
-                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
-                  <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
-                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
+                  {showFinanceHistory&&<Line type="monotone" isAnimationActive={false} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />}
+                  {showFinanceHistory&&<Line type="monotone" isAnimationActive={false} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />}
+                  <Line type="monotone" isAnimationActive={false} dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
+                  <Line type="monotone" isAnimationActive={false} dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
+                  {hasF&&<Line type="monotone" isAnimationActive={false} dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
