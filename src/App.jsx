@@ -450,6 +450,42 @@ export default function App() {
     month: m, "Member Index": Math.round(memberIndices[i]*100)/100, "Finance Index": Math.round(financeIndices[i]*100)/100
   }));
 
+  // Fixed Y-axis domains — computed from ALL data including historical so scale never shifts when toggling
+  const memberYDomain = useMemo(() => {
+    const allVals = [
+      ...historicalData.year1.membership, ...historicalData.year2.membership,
+      ...origMember, ...rfMember.filter(v=>v!==null), ...trajMember.filter(v=>v!==null),
+      ...actuals.membership.filter(v=>v!=="").map(Number)
+    ].filter(v => v != null);
+    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const pad = (max - min) * 0.1;
+    return [Math.floor(min - pad), Math.ceil(max + pad)];
+  }, [historicalData, origMember, rfMember, trajMember, actuals.membership]);
+
+  const cashYDomain = useMemo(() => {
+    const allVals = [
+      ...financeYear1Running, ...financeYear2Running,
+      ...origFinance, ...rfFinance.filter(v=>v!==null), ...trajFinance.filter(v=>v!==null),
+      ...actuals.finance.filter(v=>v!=="").map(Number)
+    ].filter(v => v != null);
+    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const pad = (max - min) * 0.1;
+    return [Math.floor(min - pad), Math.ceil(max + pad)];
+  }, [financeYear1Running, financeYear2Running, origFinance, rfFinance, trajFinance, actuals.finance]);
+
+  const netYDomain = useMemo(() => {
+    const allVals = [
+      ...financeYear1Running.map((v,i) => v - outstandingDebt),
+      ...financeYear2Running.map((v,i) => v - outstandingDebt),
+      ...netChart.map(r => r["Original Target"]).filter(v=>v!=null),
+      ...netChart.map(r => r["Reforecast to Goal"]).filter(v=>v!=null),
+      ...netChart.map(r => r["Actual"]).filter(v=>v!=null),
+    ].filter(v => v != null);
+    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const pad = (max - min) * 0.1;
+    return [Math.floor(min - pad), Math.ceil(max + pad)];
+  }, [financeYear1Running, financeYear2Running, netChart, outstandingDebt]);
+
   // ── Styles ──
   const card = { background:"#fff", borderRadius:12, padding:24, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", marginBottom:20 };
   const th   = { padding:"8px 12px", background:"#f5f5f5", fontWeight:700, color:"#555", fontSize:13 };
@@ -635,7 +671,7 @@ export default function App() {
                 <ComposedChart data={memberChart} margin={{ top:10, right:20, bottom:0, left:10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="month" tick={{ fontSize:12 }} />
-                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>v.toLocaleString()} domain={['auto', 'auto']} />
+                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>v.toLocaleString()} domain={memberYDomain} />
                   <Tooltip content={<Tip suffix=" scouts" />} />
                   <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                   <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
@@ -860,7 +896,7 @@ export default function App() {
                 <ComposedChart data={cashChart} margin={{ top:10, right:20, bottom:0, left:20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="month" tick={{ fontSize:12 }} />
-                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={['auto','auto']} />
+                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={cashYDomain} />
                   <Tooltip content={<Tip prefix="$" />} />
                   <ReferenceLine y={financeStartBalance} stroke="#ddd" strokeDasharray="4 3" label={{ value:"Start", fontSize:10, fill:"#bbb" }} />
                   <ReferenceLine y={0} stroke="#ffcdd2" strokeWidth={1.5} />
@@ -885,7 +921,7 @@ export default function App() {
                 <ComposedChart data={netChart} margin={{ top:10, right:20, bottom:0, left:20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="month" tick={{ fontSize:12 }} />
-                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={['auto','auto']} />
+                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={netYDomain} />
                   <Tooltip content={<Tip prefix="$" />} />
                   <ReferenceLine y={0} stroke="#c62828" strokeWidth={2} label={{ value:"Break-even", fontSize:11, fill:"#c62828", position:"insideTopLeft" }} />
                   {activeEvents.map(evt=>(
