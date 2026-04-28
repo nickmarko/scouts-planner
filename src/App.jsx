@@ -316,7 +316,9 @@ export default function App() {
     return buildFinanceTargets(financeStartBalance, goalBeforeEvents, historicalDeviations, activeEvents);
   }, [financeStartBalance, financeGoalBalance, historicalDeviations, activeEvents]);
 
-  // Reforecast: from last actual, ramp to goal using deviations for remaining months
+  // Reforecast: from last actual, ramp to goal using deviations for remaining months.
+  // When suppressNovBump is on, November deviation is zeroed out and the goal is
+  // reduced by the historical Nov bump (~$107k) since that income came in Q1 instead.
   const rfFinance = useMemo(() => {
     const last = lastActualIdx(actuals.finance);
     if (last === -1) return Array(12).fill(null);
@@ -328,19 +330,24 @@ export default function App() {
     const lastVal = Number(actuals.finance[last]);
     const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
     const futureEventTotal = futureEvents.reduce((s,e) => s + Number(e.amount||0), 0);
-    const goalWithoutEvents = financeGoalBalance - futureEventTotal;
+    // When Nov bump suppressed, reduce goal by the Nov historical movement
+    const novBump = avgCashShape[10] - avgCashShape[9]; // ~$107k
+    const adjustedGoal = financeGoalBalance - (suppressNovBump ? novBump : 0);
+    const goalWithoutEvents = adjustedGoal - futureEventTotal;
     const monthsLeft = 11 - last;
     for (let i = last + 1; i < 12; i++) {
       const t = (i - last) / monthsLeft;
       const ramp = lastVal + (goalWithoutEvents - lastVal) * t;
-      result[i] = Math.round(ramp + historicalDeviations[i]);
+      // Zero out Nov deviation when suppressed
+      const deviation = (suppressNovBump && i === 10) ? 0 : historicalDeviations[i];
+      result[i] = Math.round(ramp + deviation);
     }
     futureEvents.forEach(evt => {
       const mi = MONTHS.indexOf(evt.month);
       for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount||0));
     });
     return result;
-  }, [actuals.finance, financeGoalBalance, historicalDeviations, activeEvents]);
+  }, [actuals.finance, financeGoalBalance, historicalDeviations, activeEvents, suppressNovBump, avgCashShape]);
 
   // Trajectory: from last actual, project where we will naturally end up.
   // Uses historical month-to-month changes. When suppressNovBump is on, the November
@@ -671,7 +678,7 @@ export default function App() {
               <div style={{ fontSize:13, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:20 }}>Finance Setup</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:24 }}>
                 <div>
-                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Jan1 Bank Balance</div>
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Jan 1 Bank Balance</div>
                   <div style={{ fontSize:28, fontWeight:800, color:"#555", marginBottom:8 }}>${financeStartBalance.toLocaleString()}</div>
                   <input type="range" min={0} max={2000000} step={5000} value={financeStartBalance}
                     onChange={e=>setFinanceStartBalance(Number(e.target.value))}
