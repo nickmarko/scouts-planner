@@ -289,8 +289,18 @@ export default function App() {
     "Projected Trajectory":  trajMember[i],
   }));
 
+  // Build running balances for historical years from monthly net flows
+  const financeYear1Running = historicalData.year1.finance.reduce((acc, v, i) => {
+    acc.push((i > 0 ? acc[i-1] : 0) + v); return acc;
+  }, []);
+  const financeYear2Running = historicalData.year2.finance.reduce((acc, v, i) => {
+    acc.push((i > 0 ? acc[i-1] : 0) + v); return acc;
+  }, []);
+
   const financeChart = MONTHS.map((m, i) => ({
     month: m,
+    [historicalData.year1.label]: financeYear1Running[i],
+    [historicalData.year2.label]: financeYear2Running[i],
     "Original Target":      origFinance[i],
     "Actual":               actuals.finance[i] !== "" ? Number(actuals.finance[i]) : null,
     "Reforecast to Goal":   rfFinance[i],
@@ -477,6 +487,8 @@ export default function App() {
                   <Tooltip content={<Tip suffix=" scouts" />} />
                   <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                   <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
                   {hasM&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
@@ -612,6 +624,8 @@ export default function App() {
             <div style={card}>
               <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.05em" }}>Running Balance Chart</div>
               <ChartLegend items={[
+                { color:"#a5d6a7", label:historicalData.year1.label, dash:"4 3" },
+                { color:"#66bb6a", label:historicalData.year2.label },
                 { color:"#1B5E20", label:"Original Target", dash:"6 3" },
                 { color:"#F57F17", label:"Actual" },
                 ...(hasF?[
@@ -632,6 +646,8 @@ export default function App() {
                     <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
                       label={{ value:`${evt.label} ${Number(evt.amount)>=0?"+$":"-$"}${Math.abs(Number(evt.amount)).toLocaleString()}`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
                   ))}
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
                   {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
