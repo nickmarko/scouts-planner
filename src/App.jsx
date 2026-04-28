@@ -452,9 +452,12 @@ export default function App() {
     </div>
   );
 
-  const SummaryBanner = ({ hasActuals, lastIdx, rfLine, trajEnd, goalVal, goalLabel, prefix="" }) => {
+  const SummaryBanner = ({ hasActuals, lastIdx, rfLine, trajEnd, goalVal, goalLabel, prefix="", priorYearEnd=null }) => {
     if (!hasActuals) return null;
     const gap = trajEnd !== null ? trajEnd - goalVal : null;
+    const pctVsPrior = (trajEnd !== null && priorYearEnd !== null && priorYearEnd !== 0)
+      ? ((trajEnd - priorYearEnd) / priorYearEnd * 100)
+      : null;
     return (
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
         <div style={{ background:"#E3F2FD", borderRadius:10, padding:"14px 18px", border:"1px solid #BBDEFB" }}>
@@ -469,7 +472,12 @@ export default function App() {
           <div style={{ fontSize:22, fontWeight:800, color: gap !== null && gap >= 0 ? "#2E7D32" : "#E65100" }}>
             {trajEnd !== null ? `${prefix}${trajEnd.toLocaleString()}${goalLabel}` : "—"}
           </div>
-          <div style={{ fontSize:12, color:"#888" }}>
+          {pctVsPrior !== null && (
+            <div style={{ fontSize:13, fontWeight:700, color: pctVsPrior >= 0 ? "#2E7D32" : "#c62828", marginTop:2 }}>
+              {pctVsPrior >= 0 ? "+" : ""}{pctVsPrior.toFixed(1)}% vs prior year ({priorYearEnd.toLocaleString()} Dec {historicalData.year2.label})
+            </div>
+          )}
+          <div style={{ fontSize:12, color:"#888", marginTop:2 }}>
             {gap !== null
               ? gap >= 0 ? `${prefix}${gap.toLocaleString()} above goal` : `${prefix}${Math.abs(gap).toLocaleString()} short of goal`
               : "Enter actuals to project"}
@@ -596,7 +604,8 @@ export default function App() {
 
             <SummaryBanner hasActuals={hasM} lastIdx={lastMemberIdx}
               rfLine={rfMember} trajEnd={projMemberEnd}
-              goalVal={memberGoalCount} goalLabel=" scouts" />
+              goalVal={memberGoalCount} goalLabel=" scouts"
+              priorYearEnd={historicalData.year2.membership[11]} />
 
             <div style={card}>
               <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.05em" }}>Monthly Membership Chart</div>
