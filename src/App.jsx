@@ -341,7 +341,11 @@ export default function App() {
     return result;
   }, [actuals.finance, financeGoalBalance, historicalDeviations, activeEvents]);
 
-  // Trajectory: from last actual, replay historical deviations offset to current position
+  // Trajectory: from last actual, project where we will naturally end up.
+  // Strategy: use the historical seasonal MOVEMENT (month-to-month changes) from the
+  // last actual month forward, applied from our current position.
+  // This answers "if future months move like they historically have, where do we end up?"
+  // It does NOT assume the current outperformance vs history is permanent.
   const trajFinance = useMemo(() => {
     const last = lastActualIdx(actuals.finance);
     if (last === -1) return Array(12).fill(null);
@@ -351,10 +355,12 @@ export default function App() {
     }
     if (last === 11) return result;
     const lastVal = Number(actuals.finance[last]);
-    // Offset = how far above/below the historical shape we are right now
-    const offset = lastVal - avgCashShape[last];
+    // Use month-to-month changes from historical average as the natural movement pattern
+    let running = lastVal;
     for (let i = last + 1; i < 12; i++) {
-      result[i] = Math.round(avgCashShape[i] + offset);
+      const historicalMonthlyChange = avgCashShape[i] - avgCashShape[i - 1];
+      running += historicalMonthlyChange;
+      result[i] = Math.round(running);
     }
     const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
     futureEvents.forEach(evt => {
