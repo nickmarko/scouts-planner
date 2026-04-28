@@ -389,8 +389,10 @@ export default function App() {
   // ── Chart data ──
   const memberChart = MONTHS.map((m, i) => ({
     month: m,
-    [historicalData.year1.label]: historicalData.year1.membership[i],
-    [historicalData.year2.label]: historicalData.year2.membership[i],
+    ...(showMemberHistory ? {
+      [historicalData.year1.label]: historicalData.year1.membership[i],
+      [historicalData.year2.label]: historicalData.year2.membership[i],
+    } : {}),
     "Original Target":       origMember[i],
     "Actual":                actuals.membership[i] !== "" ? Number(actuals.membership[i]) : null,
     "Reforecast to Goal":    rfMember[i],
@@ -416,8 +418,10 @@ export default function App() {
   // Cash chart: raw bank balance as CEO reports it
   const cashChart = MONTHS.map((m, i) => ({
     month: m,
-    [historicalData.year1.label]: financeYear1Running[i],
-    [historicalData.year2.label]: financeYear2Running[i],
+    ...(showFinanceHistory ? {
+      [historicalData.year1.label]: financeYear1Running[i],
+      [historicalData.year2.label]: financeYear2Running[i],
+    } : {}),
     "Original Target":      origFinance[i],
     "Actual":               actuals.finance[i] !== "" ? Number(actuals.finance[i]) : null,
     "Reforecast to Goal":   rfFinance[i],
@@ -431,8 +435,10 @@ export default function App() {
     const toNet = v => (v !== null && v !== undefined) ? Math.round(v - debt) : null;
     return {
       month: m,
-      [historicalData.year1.label]: toNet(financeYear1Running[i]),
-      [historicalData.year2.label]: toNet(financeYear2Running[i]),
+      ...(showFinanceHistory ? {
+        [historicalData.year1.label]: toNet(financeYear1Running[i]),
+        [historicalData.year2.label]: toNet(financeYear2Running[i]),
+      } : {}),
       "Original Target":      toNet(origFinance[i]),
       "Actual":               actuals.finance[i] !== "" ? toNet(Number(actuals.finance[i])) : null,
       "Reforecast to Goal":   toNet(rfFinance[i]),
