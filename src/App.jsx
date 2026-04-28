@@ -225,6 +225,7 @@ export default function App() {
   const [financeEvents, setFinanceEvents] = useState([
     { id: 1, month: "Sep", amount: "", label: "Asset Sale" }
   ]);
+  const [outstandingDebt, setOutstandingDebt] = useState(500000);
   const [actuals, setActuals] = useState({
     membership: Array(12).fill(""),
     finance: Array(12).fill("")
@@ -266,9 +267,94 @@ export default function App() {
   const rfMember     = useMemo(() => buildReforecast(actuals.membership, memberGoalCount, memberIndices, []), [actuals.membership, memberGoalCount, memberIndices]);
   const trajMember   = useMemo(() => buildTrajectory(actuals.membership, memberIndices, []), [actuals.membership, memberIndices]);
 
-  const origFinance  = useMemo(() => buildOriginalTargets(financeStartBalance, financeGoalBalance, financeIndices, activeEvents), [financeStartBalance, financeGoalBalance, financeIndices, activeEvents]);
-  const rfFinance    = useMemo(() => buildReforecast(actuals.finance, financeGoalBalance, financeIndices, activeEvents), [actuals.finance, financeGoalBalance, financeIndices, activeEvents]);
-  const trajFinance  = useMemo(() => buildTrajectory(actuals.finance, financeIndices, activeEvents), [actuals.finance, financeIndices, activeEvents]);
+  // ── Finance: flow-based projection ──
+  // The seasonal indices represent monthly NET FLOW patterns (not levels).
+  // We simulate running balance by adding each month's projected flow to the prior balance.
+  // This is fundamentally different from membership (a level metric).
+
+  // Compute average monthly flow from historical data
+  const avgMonthlyFlows = useMemo(() => {
+    return MONTHS.map((_, i) => (historicalData.year1.finance[i] + historicalData.year2.finance[i]) / 2);
+  }, [historicalData]);
+
+  // Total historical average annual flow
+  const avgAnnualFlow = useMemo(() => avgMonthlyFlows.reduce((a,b) => a+b, 0), [avgMonthlyFlows]);
+
+  // Scale monthly flows so they sum to the desired year-end change (financeGoal),
+  // preserving the seasonal shape. Then simulate running balance from startBalance.
+  const origFinance = useMemo(() => {
+    const scale = avgAnnualFlow !== 0 ? financeGoal / avgAnnualFlow : 1;
+    const result = [];
+    let bal = financeStartBalance;
+    for (let i = 0; i < 12; i++) {
+      bal += avgMonthlyFlows[i] * scale;
+      result.push(Math.round(bal));
+    }
+    // Apply one-time events
+    activeEvents.forEach(evt => {
+      const mi = MONTHS.indexOf(evt.month);
+      for (let i = mi; i < 12; i++) result[i] = Math.round(result[i] + Number(evt.amount));
+    });
+    return result;
+  }, [financeStartBalance, financeGoal, avgMonthlyFlows, avgAnnualFlow, activeEvents]);
+
+  // Reforecast: lock actuals, then project remaining months using scaled seasonal flows
+  // to still hit financeGoalBalance by December.
+  const rfFinance = useMemo(() => {
+    const last = lastActualIdx(actuals.finance);
+    if (last === -1) return Array(12).fill(null);
+    const result = Array(12).fill(null);
+    for (let i = 0; i <= last; i++) {
+      if (actuals.finance[i] !== "") result[i] = Number(actuals.finance[i]);
+    }
+    if (last === 11) return result;
+    const lastVal = Number(actuals.finance[last]);
+    const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
+    const futureEventTotal = futureEvents.reduce((s,e) => s + Number(e.amount), 0);
+    const targetWithoutEvents = financeGoalBalance - futureEventTotal;
+    // Sum of remaining average flows
+    const remainingFlows = avgMonthlyFlows.slice(last + 1);
+    const remainingFlowSum = remainingFlows.reduce((a,b) => a+b, 0);
+    const neededChange = targetWithoutEvents - lastVal;
+    const scale = remainingFlowSum !== 0 ? neededChange / remainingFlowSum : 0;
+    let bal = lastVal;
+    for (let i = last + 1; i < 12; i++) {
+      bal += avgMonthlyFlows[i] * scale;
+      result[i] = Math.round(bal);
+    }
+    futureEvents.forEach(evt => {
+      const mi = MONTHS.indexOf(evt.month);
+      for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount));
+    });
+    return result;
+  }, [actuals.finance, financeGoalBalance, avgMonthlyFlows, activeEvents]);
+
+  // Trajectory: from last actual, apply historical seasonal flow pattern as-is
+  const trajFinance = useMemo(() => {
+    const last = lastActualIdx(actuals.finance);
+    if (last === -1) return Array(12).fill(null);
+    const result = Array(12).fill(null);
+    for (let i = 0; i <= last; i++) {
+      if (actuals.finance[i] !== "") result[i] = Number(actuals.finance[i]);
+    }
+    if (last === 11) return result;
+    const lastVal = Number(actuals.finance[last]);
+    // Scale: ratio of actual vs what historical average says this month should be
+    const historicalAtLast = avgMonthlyFlows.slice(0, last+1).reduce((a,b) => a+b, 0);
+    const actualAtLast = lastVal - financeStartBalance;
+    const scaleRatio = historicalAtLast !== 0 ? actualAtLast / historicalAtLast : 1;
+    let bal = lastVal;
+    for (let i = last + 1; i < 12; i++) {
+      bal += avgMonthlyFlows[i] * scaleRatio;
+      result[i] = Math.round(bal);
+    }
+    const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
+    futureEvents.forEach(evt => {
+      const mi = MONTHS.indexOf(evt.month);
+      for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount));
+    });
+    return result;
+  }, [actuals.finance, financeStartBalance, avgMonthlyFlows, activeEvents]);
 
   const lastMemberIdx  = lastActualIdx(actuals.membership);
   const lastFinanceIdx = lastActualIdx(actuals.finance);
@@ -289,7 +375,7 @@ export default function App() {
     "Projected Trajectory":  trajMember[i],
   }));
 
-  // Build running balances for historical years from monthly net flows
+  // Historical running balances (cumulative from Jan)
   const financeYear1Running = historicalData.year1.finance.reduce((acc, v, i) => {
     acc.push((i > 0 ? acc[i-1] : 0) + v); return acc;
   }, []);
@@ -297,7 +383,22 @@ export default function App() {
     acc.push((i > 0 ? acc[i-1] : 0) + v); return acc;
   }, []);
 
-  const financeChart = MONTHS.map((m, i) => ({
+  // Remaining debt after any asset sale events that have passed
+  // Once an asset sale >= outstandingDebt occurs, debt drops to zero
+  const debtByMonth = useMemo(() => {
+    let remaining = outstandingDebt;
+    return MONTHS.map((m, i) => {
+      const evt = activeEvents.find(e => MONTHS.indexOf(e.month) === i);
+      if (evt && Number(evt.amount) > 0) {
+        const payoff = Math.min(remaining, Number(evt.amount));
+        remaining = Math.max(0, remaining - payoff);
+      }
+      return remaining;
+    });
+  }, [outstandingDebt, activeEvents]);
+
+  // Cash chart: raw balances as reported
+  const cashChart = MONTHS.map((m, i) => ({
     month: m,
     [historicalData.year1.label]: financeYear1Running[i],
     [historicalData.year2.label]: financeYear2Running[i],
@@ -306,6 +407,21 @@ export default function App() {
     "Reforecast to Goal":   rfFinance[i],
     "Projected Trajectory": trajFinance[i],
   }));
+
+  // Net chart: cash minus outstanding debt at each month
+  const netChart = MONTHS.map((m, i) => {
+    const debt = debtByMonth[i];
+    const toNet = v => v !== null && v !== undefined ? Math.round(v - debt) : null;
+    return {
+      month: m,
+      [historicalData.year1.label]: financeYear1Running[i] !== undefined ? Math.round(financeYear1Running[i] - outstandingDebt) : null,
+      [historicalData.year2.label]: financeYear2Running[i] !== undefined ? Math.round(financeYear2Running[i] - outstandingDebt) : null,
+      "Original Target":      toNet(origFinance[i]),
+      "Actual":               actuals.finance[i] !== "" ? toNet(Number(actuals.finance[i])) : null,
+      "Reforecast to Goal":   toNet(rfFinance[i]),
+      "Projected Trajectory": toNet(trajFinance[i]),
+    };
+  });
 
   const indexChart = MONTHS.map((m, i) => ({
     month: m, "Member Index": Math.round(memberIndices[i]*100)/100, "Finance Index": Math.round(financeIndices[i]*100)/100
@@ -544,35 +660,46 @@ export default function App() {
             {head("Finance Trajectory","Track running bank balance against seasonally-adjusted monthly targets.")}
 
             <div style={card}>
-              <div style={{ fontSize:13, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:20 }}>Finance Goals</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:32 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:20 }}>Finance Setup</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:24 }}>
                 <div>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
-                    <span style={{ fontSize:13, color:"#666", fontWeight:600 }}>Starting Bank Balance</span>
-                    <span style={{ fontSize:28, fontWeight:800, color:financeStartBalance<0?"#c62828":"#555" }}>{financeStartBalance<0?"-$":"$"}{Math.abs(financeStartBalance).toLocaleString()}</span>
-                  </div>
-                  <input type="range" min={-1000000} max={1000000} step={1000} value={financeStartBalance}
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Starting Cash (CEO reports)</div>
+                  <div style={{ fontSize:28, fontWeight:800, color:"#555", marginBottom:8 }}>${financeStartBalance.toLocaleString()}</div>
+                  <input type="range" min={0} max={2000000} step={1000} value={financeStartBalance}
                     onChange={e=>setFinanceStartBalance(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#555" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
-                    <span>-$1M</span><span>-$500k</span><span>$0</span><span>+$500k</span><span>+$1M</span>
+                    <span>$0</span><span>$1M</span><span>$2M</span>
                   </div>
                 </div>
                 <div>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
-                    <span style={{ fontSize:13, color:"#666", fontWeight:600 }}>Year-End Net Change Goal</span>
-                    <span style={{ fontSize:28, fontWeight:800, color:financeGoal>=0?"#2E7D32":"#c62828" }}>
-                      {financeGoal>=0?"+$":"-$"}{Math.abs(financeGoal).toLocaleString()}
-                    </span>
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Outstanding Debt (Loan)</div>
+                  <div style={{ fontSize:28, fontWeight:800, color:"#c62828", marginBottom:8 }}>-${outstandingDebt.toLocaleString()}</div>
+                  <input type="range" min={0} max={2000000} step={1000} value={outstandingDebt}
+                    onChange={e=>setOutstandingDebt(Number(e.target.value))}
+                    style={{ width:"100%", cursor:"pointer", accentColor:"#c62828" }} />
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
+                    <span>$0</span><span>$1M</span><span>$2M</span>
                   </div>
-                  <input type="range" min={-10000} max={20000} step={500} value={financeGoal}
+                  <div style={{ marginTop:8, fontSize:12, color:"#888" }}>
+                    True net position: <b style={{ color: (financeStartBalance-outstandingDebt)>=0?"#2E7D32":"#c62828" }}>
+                      {(financeStartBalance-outstandingDebt)>=0?"$":"-$"}{Math.abs(financeStartBalance-outstandingDebt).toLocaleString()}
+                    </b>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Year-End Cash Goal</div>
+                  <div style={{ fontSize:28, fontWeight:800, color:financeGoal>=0?"#2E7D32":"#c62828", marginBottom:8 }}>
+                    {financeGoal>=0?"+$":"-$"}{Math.abs(financeGoal).toLocaleString()}
+                  </div>
+                  <input type="range" min={-1000000} max={2000000} step={1000} value={financeGoal}
                     onChange={e=>setFinanceGoal(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#2E7D32" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
-                    <span>-$10k</span><span>$0</span><span>+$10k</span><span>+$20k</span>
+                    <span>-$1M</span><span>$0</span><span>+$1M</span><span>+$2M</span>
                   </div>
                   <div style={{ marginTop:8, fontSize:12, color:"#888" }}>
-                    Target ending balance: <b style={{ color:"#2E7D32" }}>${financeGoalBalance.toLocaleString()}</b>
+                    Target cash: <b style={{ color:"#2E7D32" }}>${financeGoalBalance.toLocaleString()}</b>
                   </div>
                 </div>
               </div>
@@ -621,8 +748,8 @@ export default function App() {
               rfLine={rfFinance} trajEnd={projFinanceEnd}
               goalVal={financeGoalBalance} goalLabel="" prefix="$" />
 
-            <div style={card}>
-              <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.05em" }}>Running Balance Chart</div>
+            {/* Shared legend */}
+            <div style={{ ...card, paddingBottom:12 }}>
               <ChartLegend items={[
                 { color:"#a5d6a7", label:historicalData.year1.label, dash:"4 3" },
                 { color:"#66bb6a", label:historicalData.year2.label },
@@ -634,17 +761,48 @@ export default function App() {
                 ]:[]),
                 ...(activeEvents.length>0?[{ color:"#9C27B0", label:"One-time Event ★" }]:[])
               ]} />
-              <ResponsiveContainer width="100%" height={340}>
-                <ComposedChart data={financeChart} margin={{ top:10, right:20, bottom:0, left:20 }}>
+            </div>
+
+            {/* Cash Chart — what CEO reports */}
+            <div style={card}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Cash Position (What the CEO Reports)</div>
+              <div style={{ fontSize:12, color:"#888", marginBottom:12 }}>Raw bank balance — does not account for the ${outstandingDebt.toLocaleString()} outstanding loan.</div>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={cashChart} margin={{ top:10, right:20, bottom:0, left:20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="month" tick={{ fontSize:12 }} />
-                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={['auto', 'auto']} />
+                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={['auto','auto']} />
                   <Tooltip content={<Tip prefix="$" />} />
-                  <ReferenceLine y={financeStartBalance} stroke="#ddd" strokeDasharray="4 3" />
+                  <ReferenceLine y={financeStartBalance} stroke="#ddd" strokeDasharray="4 3" label={{ value:"Start", fontSize:10, fill:"#bbb" }} />
                   <ReferenceLine y={0} stroke="#ffcdd2" strokeWidth={1.5} />
                   {activeEvents.map(evt=>(
                     <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
-                      label={{ value:`${evt.label} ${Number(evt.amount)>=0?"+$":"-$"}${Math.abs(Number(evt.amount)).toLocaleString()}`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
+                      label={{ value:`${evt.label} +$${Number(evt.amount).toLocaleString()}`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
+                  ))}
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
+                  <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
+                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
+                  {hasF&&<Line type="monotone" dataKey="Projected Trajectory" stroke="#E65100" strokeWidth={2} dot={false} strokeDasharray="2 2" />}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Net Position Chart — cash minus debt */}
+            <div style={card}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Net Position (Cash minus ${outstandingDebt.toLocaleString()} Loan)</div>
+              <div style={{ fontSize:12, color:"#888", marginBottom:12 }}>True financial health. After asset sale retires the loan, this chart converges with the cash chart above.</div>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={netChart} margin={{ top:10, right:20, bottom:0, left:20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize:12 }} />
+                  <YAxis tick={{ fontSize:12 }} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} domain={['auto','auto']} />
+                  <Tooltip content={<Tip prefix="$" />} />
+                  <ReferenceLine y={0} stroke="#c62828" strokeWidth={2} label={{ value:"Break-even", fontSize:11, fill:"#c62828", position:"insideTopLeft" }} />
+                  {activeEvents.map(evt=>(
+                    <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
+                      label={{ value:`${evt.label} (net +$${Math.max(0,Number(evt.amount)-outstandingDebt).toLocaleString()})`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
                   ))}
                   <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                   <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
