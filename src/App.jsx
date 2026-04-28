@@ -450,41 +450,10 @@ export default function App() {
     month: m, "Member Index": Math.round(memberIndices[i]*100)/100, "Finance Index": Math.round(financeIndices[i]*100)/100
   }));
 
-  // Fixed Y-axis domains — computed from ALL data including historical so scale never shifts when toggling
-  const memberYDomain = useMemo(() => {
-    const allVals = [
-      ...historicalData.year1.membership, ...historicalData.year2.membership,
-      ...origMember, ...rfMember.filter(v=>v!==null), ...trajMember.filter(v=>v!==null),
-      ...actuals.membership.filter(v=>v!=="").map(Number)
-    ].filter(v => v != null);
-    const min = Math.min(...allVals), max = Math.max(...allVals);
-    const pad = (max - min) * 0.1;
-    return [Math.floor(min - pad), Math.ceil(max + pad)];
-  }, [historicalData, origMember, rfMember, trajMember, actuals.membership]);
-
-  const cashYDomain = useMemo(() => {
-    const allVals = [
-      ...financeYear1Running, ...financeYear2Running,
-      ...origFinance, ...rfFinance.filter(v=>v!==null), ...trajFinance.filter(v=>v!==null),
-      ...actuals.finance.filter(v=>v!=="").map(Number)
-    ].filter(v => v != null);
-    const min = Math.min(...allVals), max = Math.max(...allVals);
-    const pad = (max - min) * 0.1;
-    return [Math.floor(min - pad), Math.ceil(max + pad)];
-  }, [financeYear1Running, financeYear2Running, origFinance, rfFinance, trajFinance, actuals.finance]);
-
-  const netYDomain = useMemo(() => {
-    const allVals = [
-      ...financeYear1Running.map((v,i) => v - outstandingDebt),
-      ...financeYear2Running.map((v,i) => v - outstandingDebt),
-      ...netChart.map(r => r["Original Target"]).filter(v=>v!=null),
-      ...netChart.map(r => r["Reforecast to Goal"]).filter(v=>v!=null),
-      ...netChart.map(r => r["Actual"]).filter(v=>v!=null),
-    ].filter(v => v != null);
-    const min = Math.min(...allVals), max = Math.max(...allVals);
-    const pad = (max - min) * 0.1;
-    return [Math.floor(min - pad), Math.ceil(max + pad)];
-  }, [financeYear1Running, financeYear2Running, netChart, outstandingDebt]);
+  // Fixed Y-axis domains — hardcoded from full dataset range so scale NEVER shifts when toggling lines
+  const memberYDomain = [1400, 2700];
+  const cashYDomain = [-100000, 1100000];
+  const netYDomain = [-700000, 700000];
 
   // ── Styles ──
   const card = { background:"#fff", borderRadius:12, padding:24, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", marginBottom:20 };
