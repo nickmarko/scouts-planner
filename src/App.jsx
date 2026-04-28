@@ -267,51 +267,47 @@ export default function App() {
   const rfMember     = useMemo(() => buildReforecast(actuals.membership, memberGoalCount, memberIndices, []), [actuals.membership, memberGoalCount, memberIndices]);
   const trajMember   = useMemo(() => buildTrajectory(actuals.membership, memberIndices, []), [actuals.membership, memberIndices]);
 
-  // ── Finance: shape-scaled projection ──
-  // Strategy: average the two historical years to get a "typical year shape".
-  // Scale that shape so it starts at financeStartBalance and ends at financeGoalBalance
-  // (before one-time events). This preserves the real seasonal peaks and valleys.
+  // ── Finance: deviation-based projection ──
+  // Average historical cash balances give us the seasonal shape.
+  // We build targets by:
+  //   1. Drawing a linear ramp from startBalance to goalBalance (before events)
+  //   2. Adding the historical monthly deviation from ITS own trend on top
+  // This keeps seasonal swings at their real dollar magnitudes — no amplification.
 
   const avgCashShape = useMemo(() =>
     MONTHS.map((_, i) => (historicalData.year1.finance[i] + historicalData.year2.finance[i]) / 2),
     [historicalData]);
 
-  // Scale the historical shape to fit start→goal range, then apply events
-  const scaleShape = (startVal, goalVal, shape, events) => {
-    const shapeStart = shape[0];
-    const shapeEnd = shape[11];
-    const shapeRange = shapeEnd - shapeStart;
-    const targetRange = goalVal - startVal;
-    // For each month: offset + scale the historical value to fit our range
-    const result = shape.map(v => {
-      if (shapeRange === 0) return Math.round(startVal + (v - shapeStart));
-      const normalized = (v - shapeStart) / shapeRange; // 0 at Jan, 1 at Dec (roughly)
-      return Math.round(startVal + normalized * targetRange + (v - shapeStart - normalized * shapeRange) * Math.abs(targetRange / (shapeRange || 1)));
+  // Pre-compute historical deviations from its own linear trend (Jan→Dec)
+  const historicalDeviations = useMemo(() => {
+    const s = avgCashShape[0], e = avgCashShape[11];
+    return avgCashShape.map((v, i) => {
+      const trendVal = s + (e - s) * (i / 11);
+      return v - trendVal;  // how much above/below trend this month historically is
     });
-    // Simpler and more robust: fit a line from startVal to goalVal, add seasonal deviation on top
-    const fitted = shape.map((v, i) => {
+  }, [avgCashShape]);
+
+  const buildFinanceTargets = (startVal, goalVal, deviations, events) => {
+    const result = MONTHS.map((_, i) => {
       const t = i / 11;
-      const baseline = startVal + (goalVal - startVal) * t;
-      const shapeMidpoint = (shapeStart + shapeEnd) / 2;
-      const deviation = v - (shapeStart + (shapeEnd - shapeStart) * t); // deviation from shape's own trend
-      return Math.round(baseline + deviation);
+      const ramp = startVal + (goalVal - startVal) * t;
+      return Math.round(ramp + deviations[i]);
     });
-    // Apply events
-    const withEvents = [...fitted];
     events.forEach(evt => {
       const mi = MONTHS.indexOf(evt.month);
       if (mi >= 0 && evt.amount !== '' && Number(evt.amount) !== 0) {
-        for (let i = mi; i < 12; i++) withEvents[i] = Math.round(withEvents[i] + Number(evt.amount));
+        for (let i = mi; i < 12; i++) result[i] = Math.round(result[i] + Number(evt.amount));
       }
     });
-    return withEvents;
+    return result;
   };
 
-  const origFinance = useMemo(() =>
-    scaleShape(financeStartBalance, financeGoalBalance - activeEvents.reduce((s,e) => s + Number(e.amount||0), 0), avgCashShape, activeEvents),
-    [financeStartBalance, financeGoalBalance, avgCashShape, activeEvents]);
+  const origFinance = useMemo(() => {
+    const goalBeforeEvents = financeGoalBalance - activeEvents.reduce((s,e) => s + Number(e.amount||0), 0);
+    return buildFinanceTargets(financeStartBalance, goalBeforeEvents, historicalDeviations, activeEvents);
+  }, [financeStartBalance, financeGoalBalance, historicalDeviations, activeEvents]);
 
-  // Reforecast: from last actual, scale shape for remaining months to still hit goal
+  // Reforecast: from last actual, ramp to goal using deviations for remaining months
   const rfFinance = useMemo(() => {
     const last = lastActualIdx(actuals.finance);
     if (last === -1) return Array(12).fill(null);
@@ -324,25 +320,20 @@ export default function App() {
     const futureEvents = activeEvents.filter(e => MONTHS.indexOf(e.month) > last);
     const futureEventTotal = futureEvents.reduce((s,e) => s + Number(e.amount||0), 0);
     const goalWithoutEvents = financeGoalBalance - futureEventTotal;
-    // Scale remaining shape months to go from lastVal to goalWithoutEvents
-    const remainingShape = avgCashShape.slice(last + 1);
-    if (remainingShape.length === 0) return result;
-    const rs = remainingShape[0], re = remainingShape[remainingShape.length - 1];
-    remainingShape.forEach((v, ri) => {
-      const i = last + 1 + ri;
-      const t = ri / Math.max(remainingShape.length - 1, 1);
-      const baseline = lastVal + (goalWithoutEvents - lastVal) * t;
-      const deviation = v - (rs + (re - rs) * t);
-      result[i] = Math.round(baseline + deviation);
-    });
+    const monthsLeft = 11 - last;
+    for (let i = last + 1; i < 12; i++) {
+      const t = (i - last) / monthsLeft;
+      const ramp = lastVal + (goalWithoutEvents - lastVal) * t;
+      result[i] = Math.round(ramp + historicalDeviations[i]);
+    }
     futureEvents.forEach(evt => {
       const mi = MONTHS.indexOf(evt.month);
       for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount||0));
     });
     return result;
-  }, [actuals.finance, financeGoalBalance, avgCashShape, activeEvents]);
+  }, [actuals.finance, financeGoalBalance, historicalDeviations, activeEvents]);
 
-  // Trajectory: from last actual, replay the historical seasonal shape forward
+  // Trajectory: from last actual, replay historical deviations offset to current position
   const trajFinance = useMemo(() => {
     const last = lastActualIdx(actuals.finance);
     if (last === -1) return Array(12).fill(null);
@@ -352,10 +343,8 @@ export default function App() {
     }
     if (last === 11) return result;
     const lastVal = Number(actuals.finance[last]);
-    const shapeAtLast = avgCashShape[last];
-    // Offset: how far above/below the historical shape are we at the last actual month?
-    const offset = lastVal - shapeAtLast;
-    // Project remaining months as historical shape + that same offset
+    // Offset = how far above/below the historical shape we are right now
+    const offset = lastVal - avgCashShape[last];
     for (let i = last + 1; i < 12; i++) {
       result[i] = Math.round(avgCashShape[i] + offset);
     }
