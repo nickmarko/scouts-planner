@@ -221,7 +221,7 @@ export default function App() {
   const [loadError, setLoadError] = useState(false);
   const [memberGoalCount, setMemberGoalCount] = useState(2200);
   const [financeGoal, setFinanceGoal] = useState(5000);
-  const [financeStartBalance, setFinanceStartBalance] = useState(3000);
+  const [financeStartBalance, setFinanceStartBalance] = useState(-16000);
   const [financeEvents, setFinanceEvents] = useState([
     { id: 1, month: "Sep", amount: "", label: "Asset Sale" }
   ]);
@@ -537,13 +537,13 @@ export default function App() {
                 <div>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
                     <span style={{ fontSize:13, color:"#666", fontWeight:600 }}>Starting Bank Balance</span>
-                    <span style={{ fontSize:28, fontWeight:800, color:"#555" }}>${financeStartBalance.toLocaleString()}</span>
+                    <span style={{ fontSize:28, fontWeight:800, color:financeStartBalance<0?"#c62828":"#555" }}>{financeStartBalance<0?"-$":"$"}{Math.abs(financeStartBalance).toLocaleString()}</span>
                   </div>
-                  <input type="range" min={0} max={20000} step={500} value={financeStartBalance}
+                  <input type="range" min={-1000000} max={1000000} step={1000} value={financeStartBalance}
                     onChange={e=>setFinanceStartBalance(Number(e.target.value))}
                     style={{ width:"100%", cursor:"pointer", accentColor:"#555" }} />
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#aaa", marginTop:4 }}>
-                    <span>$0</span><span>$10k</span><span>$20k</span>
+                    <span>-$1M</span><span>-$500k</span><span>$0</span><span>+$500k</span><span>+$1M</span>
                   </div>
                 </div>
                 <div>
