@@ -300,11 +300,18 @@ export default function App() {
         for (let i = mi; i < 12; i++) result[i] = Math.round(result[i] + Number(evt.amount));
       }
     });
+    // Force December to land exactly on goalVal + all events (no rounding drift)
+    const totalEvents = events.reduce((s,e) => s + Number(e.amount||0), 0);
+    result[11] = goalVal + totalEvents;
     return result;
   };
 
   const origFinance = useMemo(() => {
-    const goalBeforeEvents = financeGoalBalance - activeEvents.reduce((s,e) => s + Number(e.amount||0), 0);
+    // Goal before events: the ramp endpoint without one-time bumps.
+    // Events are added back by buildFinanceTargets, so subtract them here to avoid double-counting.
+    // The ramp should end at exactly financeGoalBalance after events are applied.
+    const eventTotal = activeEvents.reduce((s,e) => s + Number(e.amount||0), 0);
+    const goalBeforeEvents = financeGoalBalance - eventTotal;
     return buildFinanceTargets(financeStartBalance, goalBeforeEvents, historicalDeviations, activeEvents);
   }, [financeStartBalance, financeGoalBalance, historicalDeviations, activeEvents]);
 
@@ -659,7 +666,7 @@ export default function App() {
               <div style={{ fontSize:13, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:20 }}>Finance Setup</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:24 }}>
                 <div>
-                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Starting Cash (CEO reports)</div>
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Current Bank Balance</div>
                   <div style={{ fontSize:28, fontWeight:800, color:"#555", marginBottom:8 }}>${financeStartBalance.toLocaleString()}</div>
                   <input type="range" min={0} max={2000000} step={5000} value={financeStartBalance}
                     onChange={e=>setFinanceStartBalance(Number(e.target.value))}
@@ -786,7 +793,7 @@ export default function App() {
             {/* Cash Chart — what CEO reports */}
             <div style={card}>
               <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Cash Position (What the CEO Reports)</div>
-              <div style={{ fontSize:12, color:"#888", marginBottom:12 }}>Raw bank balance — does not account for the ${outstandingDebt.toLocaleString()} outstanding loan.</div>
+              <div style={{ fontSize:12, color:"#888", marginBottom:12 }}>Bank balance as reported — does not account for the ${outstandingDebt.toLocaleString()} outstanding loan.</div>
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={cashChart} margin={{ top:10, right:20, bottom:0, left:20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
