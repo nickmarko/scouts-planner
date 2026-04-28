@@ -226,6 +226,7 @@ export default function App() {
     { id: 1, month: "Sep", amount: "", label: "Asset Sale" }
   ]);
   const [outstandingDebt, setOutstandingDebt] = useState(500000);
+  const [suppressNovBump, setSuppressNovBump] = useState(false);
   const [actuals, setActuals] = useState({
     membership: Array(12).fill(""),
     finance: Array(12).fill("")
@@ -342,10 +343,8 @@ export default function App() {
   }, [actuals.finance, financeGoalBalance, historicalDeviations, activeEvents]);
 
   // Trajectory: from last actual, project where we will naturally end up.
-  // Strategy: use the historical seasonal MOVEMENT (month-to-month changes) from the
-  // last actual month forward, applied from our current position.
-  // This answers "if future months move like they historically have, where do we end up?"
-  // It does NOT assume the current outperformance vs history is permanent.
+  // Uses historical month-to-month changes. When suppressNovBump is on, the November
+  // recharter bump is zeroed out because that income has moved to earlier in the year.
   const trajFinance = useMemo(() => {
     const last = lastActualIdx(actuals.finance);
     if (last === -1) return Array(12).fill(null);
@@ -355,10 +354,10 @@ export default function App() {
     }
     if (last === 11) return result;
     const lastVal = Number(actuals.finance[last]);
-    // Use month-to-month changes from historical average as the natural movement pattern
     let running = lastVal;
     for (let i = last + 1; i < 12; i++) {
-      const historicalMonthlyChange = avgCashShape[i] - avgCashShape[i - 1];
+      let historicalMonthlyChange = avgCashShape[i] - avgCashShape[i - 1];
+      if (suppressNovBump && i === 10) historicalMonthlyChange = 0;
       running += historicalMonthlyChange;
       result[i] = Math.round(running);
     }
@@ -368,7 +367,7 @@ export default function App() {
       for (let i = mi; i < 12; i++) if (result[i] !== null) result[i] = Math.round(result[i] + Number(evt.amount||0));
     });
     return result;
-  }, [actuals.finance, avgCashShape, activeEvents]);
+  }, [actuals.finance, avgCashShape, activeEvents, suppressNovBump]);
 
   const lastMemberIdx  = lastActualIdx(actuals.membership);
   const lastFinanceIdx = lastActualIdx(actuals.finance);
@@ -672,7 +671,7 @@ export default function App() {
               <div style={{ fontSize:13, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:20 }}>Finance Setup</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:24 }}>
                 <div>
-                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Current Bank Balance</div>
+                  <div style={{ fontSize:11, color:"#888", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>Jan1 Bank Balance</div>
                   <div style={{ fontSize:28, fontWeight:800, color:"#555", marginBottom:8 }}>${financeStartBalance.toLocaleString()}</div>
                   <input type="range" min={0} max={2000000} step={5000} value={financeStartBalance}
                     onChange={e=>setFinanceStartBalance(Number(e.target.value))}
@@ -713,6 +712,33 @@ export default function App() {
                   <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>
                     Cash needed = loan payoff (${outstandingDebt.toLocaleString()}) + net cushion
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Suppress Nov Bump Toggle */}
+            <div style={{ ...card, padding:"16px 24px" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"#555" }}>Suppress November Recharter Bump</div>
+                  <div style={{ fontSize:12, color:"#888", marginTop:3 }}>
+                    Turn on if recharter income has moved to Q1 — prevents double-counting the historical November spike in the trajectory projection.
+                    {suppressNovBump && <span style={{ marginLeft:8, color:"#E65100", fontWeight:600 }}>Active — Nov projected flat (~$107k lower year-end)</span>}
+                  </div>
+                </div>
+                <div
+                  onClick={()=>setSuppressNovBump(p=>!p)}
+                  style={{
+                    width:48, height:26, borderRadius:13, cursor:"pointer", flexShrink:0, marginLeft:24,
+                    background: suppressNovBump ? "#2E7D32" : "#ccc",
+                    position:"relative", transition:"background 0.2s"
+                  }}>
+                  <div style={{
+                    width:22, height:22, borderRadius:11, background:"#fff",
+                    position:"absolute", top:2, transition:"left 0.2s",
+                    left: suppressNovBump ? 24 : 2,
+                    boxShadow:"0 1px 3px rgba(0,0,0,0.3)"
+                  }} />
                 </div>
               </div>
             </div>
