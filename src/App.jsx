@@ -17,13 +17,24 @@ const FALLBACK_DATA = {
 function parseCSV(csvText) {
   const result = Papa.parse(csvText, { header: true, skipEmptyLines: true });
   const years = {};
+  const actuals = { membership: Array(12).fill(""), finance: Array(12).fill("") };
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   result.data.forEach(row => {
-    const yr = `year${row.year}`;
-    if (!years[yr]) years[yr] = { label: row.label, membership: [], finance: [] };
-    years[yr].membership.push(Number(row.membership));
-    years[yr].finance.push(Number(row.finance));
+    if (row.year === "actual") {
+      // Pre-populate actuals from CSV
+      const mi = MONTHS.indexOf(row.month);
+      if (mi >= 0) {
+        if (row.membership && row.membership.trim() !== "") actuals.membership[mi] = row.membership.trim();
+        if (row.finance && row.finance.trim() !== "") actuals.finance[mi] = row.finance.trim();
+      }
+    } else {
+      const yr = `year${row.year}`;
+      if (!years[yr]) years[yr] = { label: row.label, membership: [], finance: [] };
+      years[yr].membership.push(Number(row.membership));
+      years[yr].finance.push(Number(row.finance));
+    }
   });
-  return years;
+  return { years, actuals };
 }
 
 function computeSeasonalIndices(y1, y2) {
@@ -227,8 +238,6 @@ export default function App() {
   ]);
   const [outstandingDebt, setOutstandingDebt] = useState(500000);
   const [suppressNovBump, setSuppressNovBump] = useState(false);
-  const [showMemberHistory, setShowMemberHistory] = useState(true);
-  const [showFinanceHistory, setShowFinanceHistory] = useState(true);
   const [actuals, setActuals] = useState({
     membership: Array(12).fill(""),
     finance: Array(12).fill("")
@@ -251,7 +260,16 @@ export default function App() {
   useEffect(() => {
     fetch("/data.csv")
       .then(r => r.text())
-      .then(t => { setHistoricalData(parseCSV(t)); setCsvLoaded(true); })
+      .then(t => {
+        const { years, actuals: csvActuals } = parseCSV(t);
+        setHistoricalData(years);
+        // Pre-populate actuals from CSV (only non-empty values)
+        setActuals(prev => ({
+          membership: prev.membership.map((v, i) => v !== "" ? v : csvActuals.membership[i]),
+          finance: prev.finance.map((v, i) => v !== "" ? v : csvActuals.finance[i]),
+        }));
+        setCsvLoaded(true);
+      })
       .catch(() => { setLoadError(true); setCsvLoaded(true); });
   }, []);
 
@@ -610,12 +628,7 @@ export default function App() {
               priorYearEnd={historicalData.year2.membership[11]} />
 
             <div style={card}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                <div style={{ fontSize:13, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.05em" }}>Monthly Membership Chart</div>
-                <button onClick={()=>setShowMemberHistory(p=>!p)} style={{ fontSize:12, padding:"4px 12px", border:"1px solid #ddd", borderRadius:6, background:showMemberHistory?"#f5f5f5":"#fff", cursor:"pointer", fontFamily:"inherit", color:"#555" }}>
-                  {showMemberHistory?"Hide":"Show"} Historical Lines
-                </button>
-              </div>
+              <div style={{ fontSize:13, fontWeight:700, color:"#555", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.05em" }}>Monthly Membership Chart</div>
               <ChartLegend items={[
                 { color:"#a5d6a7", label:historicalData.year1.label, dash:"4 3" },
                 { color:"#66bb6a", label:historicalData.year2.label },
@@ -632,11 +645,13 @@ export default function App() {
                   <XAxis dataKey="month" tick={{ fontSize:12 }} />
                   <YAxis tick={{ fontSize:12 }} tickFormatter={v=>v.toLocaleString()} domain={['auto', 'auto']} />
                   <Tooltip content={<Tip suffix=" scouts" />} />
-                  <Line type="monotone" hide={!showMemberHistory} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
-                  <Line type="monotone" hide={!showMemberHistory} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
-                  {hasM&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
+                  {hasM&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
                   {hasM&&<Line type="monotone" dataKey="Projected Trajectory" stroke="#E65100" strokeWidth={2} dot={false} strokeDasharray="2 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
@@ -831,11 +846,6 @@ export default function App() {
 
             {/* Shared legend */}
             <div style={{ ...card, paddingBottom:12 }}>
-              <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:8 }}>
-                <button onClick={()=>setShowFinanceHistory(p=>!p)} style={{ fontSize:12, padding:"4px 12px", border:"1px solid #ddd", borderRadius:6, background:showFinanceHistory?"#f5f5f5":"#fff", cursor:"pointer", fontFamily:"inherit", color:"#555" }}>
-                  {showFinanceHistory?"Hide":"Show"} Historical Lines
-                </button>
-              </div>
               <ChartLegend items={[
                 { color:"#a5d6a7", label:historicalData.year1.label, dash:"4 3" },
                 { color:"#66bb6a", label:historicalData.year2.label },
@@ -862,11 +872,11 @@ export default function App() {
                     <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
                       label={{ value:`${evt.label} +$${Number(evt.amount).toLocaleString()}`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
                   ))}
-                  <Line type="monotone" hide={!showFinanceHistory} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
-                  <Line type="monotone" hide={!showFinanceHistory} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
-                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
+                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -886,11 +896,11 @@ export default function App() {
                     <ReferenceLine key={evt.id} x={evt.month} stroke="#9C27B0" strokeDasharray="3 2"
                       label={{ value:`${evt.label} (net +$${Math.max(0,Number(evt.amount)-outstandingDebt).toLocaleString()})`, fontSize:10, fill:"#9C27B0", position:"insideTopRight" }} />
                   ))}
-                  <Line type="monotone" hide={!showFinanceHistory} dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
-                  <Line type="monotone" hide={!showFinanceHistory} dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={historicalData.year1.label} stroke="#a5d6a7" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                  <Line type="monotone" dataKey={historicalData.year2.label} stroke="#66bb6a" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="Original Target" stroke="#1B5E20" strokeWidth={2.5} dot={{ fill:"#1B5E20", r:3 }} strokeDasharray="6 3" />
                   <Line type="monotone" dataKey="Actual" stroke="#F57F17" strokeWidth={2.5} dot={{ fill:"#F57F17", r:5 }} connectNulls={false} />
-                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={3.5} dot={false} strokeDasharray="4 2" />}
+                  {hasF&&<Line type="monotone" dataKey="Reforecast to Goal" stroke="#1565C0" strokeWidth={2} dot={false} strokeDasharray="4 2" />}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
